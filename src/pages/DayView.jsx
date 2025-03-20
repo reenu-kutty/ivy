@@ -2,8 +2,7 @@ import {useParams} from "react-router-dom";
 import './DayView.css'
 import {useEffect, useState} from "react";
 
-
-function DayView() {
+function DayView({username}) {
     const {date} = useParams();
     const [month, day, year] = date.split("-");
     const [isLoading, setIsLoading] = useState(false);
@@ -13,47 +12,115 @@ function DayView() {
     ];
 
     const [text, setText] = useState("");
-    const [entries, setEntries] = useState([]);
+    const [dayEntries, setDayEntries] = useState([]);
 
     const handleChange = (event) => {
         setText(event.target.value);
     };
 
-    const handleSave = () => {
+    async function handleSave()  {
         if (text.trim() === "") return;
 
-        const newEntry = {
-            text: text,
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        };
+        const newDayEntry =  [new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), text];
 
-        setEntries([...entries, newEntry]);
+        try {
+            const response = await fetch(`/api/entries/${encodeURIComponent(username)}/${encodeURIComponent(date)}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ entry: newDayEntry }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error("Failed to update entries:", error);
+        }
+
+        setDayEntries(prevDayEntries => {
+            return {
+                ...prevDayEntries,
+                entries: Array.isArray(prevDayEntries.entries) ? [...prevDayEntries.entries, newDayEntry] : [newDayEntry]
+            };
+        });
+
+
+        console.log("Entries after save:", dayEntries);
         setText("");
+
     };
 
+    async function createBlankEntry() {
+        try {
+            const response = await fetch(`/api/entries/${encodeURIComponent(username)}/${encodeURIComponent(date)}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error("Failed to update entries:", error);
+        }
+    }
 
     async function loadUp() {
         setIsLoading(true);
 
-        await delayMs(2000);
+        console.log('abt to load up!')
 
-        const retrievedEntry = {
-            text: "sample journal entry that would have been written previously and fetched by a call to the db. hi silas :D",
-            time: "12:01 AM"
-        };
+        try {
+            const response = await fetch(`/api/entries/${encodeURIComponent(username)}/${encodeURIComponent(date)}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
 
-        setEntries([...entries, retrievedEntry]);
+            console.log('got response')
 
-        // there would be a network call to the db for the saved journal entry here! delay to simulate this :)
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const responseBody = await response.text();
+
+            console.log(`responsebody: ${responseBody.trim()}`)
+
+            if (!responseBody.trim()) {
+                await createBlankEntry();
+            } else {
+                const respEntries = JSON.parse(responseBody);
+                if(respEntries) {
+                    console.log("Entries:", respEntries);
+                    setDayEntries(respEntries);
+                }
+                else {
+                    setDayEntries([]);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to update entries:", error);
+        }
         setIsLoading(false);
     }
 
     useEffect(() => {
         loadUp();
-    }, []);
+    }, [])
+
+    useEffect(() => {
+        console.log("Entries after setting:", dayEntries.entries);
+        console.log("Entries length is:", Array.isArray(dayEntries.entries.length));
+
+    }, [dayEntries]);
 
 
-    console.log(month);
     return (
         <article>
             <div id="dayview-header">
@@ -74,11 +141,15 @@ function DayView() {
                         <div>
                             <h2>Saved Entries</h2>
                             <ul>
-                                {entries.map((entry, index) => (
-                                    <li key={index}>
-                                        <b>{entry.time}:</b> {entry.text}
-                                    </li>
-                                ))}
+                                {Array.isArray(dayEntries.entries) && dayEntries.entries !== undefined ? (
+                                    dayEntries.entries.map((entry, index) => (
+                                        <li key={index}>
+                                            <b>{entry[0]}:</b> {entry[1]}
+                                        </li>
+                                    ))
+                                ) : (
+                                    <li>write ur first entry ;)</li>
+                                )}
                             </ul>
                         </div>
                     </div>
@@ -87,11 +158,6 @@ function DayView() {
         </article>
     )
 }
-
-function delayMs(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 
 export default DayView;
 
